@@ -94,7 +94,13 @@
   A == 'or';
   A == 'when';
   A == 'not';
-  A == 'in').
+  A == 'in';
+  A == 'is';
+  A == 'is_not';
+  A == 'is_any';
+  A == 'are';
+  A == 'are_not';
+  A == 'are_any').
 
 tokenize(String, Line, Column, #elixir_tokenizer{} = Scope) ->
   tokenize(String, Line, Column, Scope, []);
@@ -1003,11 +1009,17 @@ keyword('false') -> token;
 keyword('nil')   -> token;
 
 % Operators keywords
-keyword('not')    -> unary_op;
-keyword('and')    -> and_op;
-keyword('or')     -> or_op;
-keyword('when')   -> when_op;
-keyword('in')     -> in_op;
+keyword('not')     -> unary_op;
+keyword('and')     -> and_op;
+keyword('or')      -> or_op;
+keyword('when')    -> when_op;
+keyword('in')      -> in_op;
+keyword('is')      -> in_op;
+keyword('is_not')  -> in_op;
+keyword('is_any')  -> in_op;
+keyword('are')     -> in_op;
+keyword('are_not') -> in_op;
+keyword('are_any') -> in_op;
 
 % Block keywords
 keyword('after')  -> block;

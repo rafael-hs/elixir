@@ -3916,6 +3916,7 @@ defmodule Kernel do
       expanded when is_atom(expanded) ->
         quote do
           require unquote(expanded)
+
           unquote(expanded).__using__(unquote(opts))
         end
       _otherwise ->
@@ -4345,5 +4346,951 @@ defmodule Kernel do
   @doc false
   defmacro to_char_list(arg) do
     quote do: Kernel.to_charlist(unquote(arg))
+  end
+
+  @doc """
+  Macro that checks whether `term` is of `kind`.
+
+  When used in guard expressions, `kind` must be a compile-time number, atom, or tuple with its
+  first element being a compile-time atom.
+
+  Allowed in guard tests.   This macro is used in guard-safe macros
+  `is/2`, `is_not/2`, `is_any/2`, `are/2`, `are_not/2` and `are_any/2`.
+
+  Raises `ArgumentError` if `kind` is not a supported one.
+
+  Supported kinds:
+
+    _For a list of data types read [Typespecs](Typespecs#types-and-their-syntax)._
+
+      # Basic and built-in types
+      :arity |
+      :atom |
+      :binary |
+      :bitstring |
+      :boolean |
+      :byte |
+      :char |
+      :float |
+      :fun | :function |
+      {:fun, arity} | {:function, arity} |          # function with arity
+      :identifier |
+      :integer |
+      :list |
+      {:list, non_neg_integer} |                    # list of a certain length
+      :map |
+      {:map, non_neg_integer} |                     # map of a certain size
+      :mfa |
+      :module |
+      :neg_integer |                                # negative integer
+      :node |
+      :non_neg_integer | :zero_or_pos_integer |     # integer equal or greater than 0
+      :nonempty_list |
+      :number |                                     # any integer or float
+      :pid |
+      :port |
+      :pos_integer |                                # positive integer
+      :reference |
+      :timeout |
+      :tuple |
+      {:tuple, non_neg_integer} |                   # tuple of a certain size
+
+      # Additional: Derived from is_* functions
+      :even |                                       # even integer
+      :nil |
+      :odd |                                        # odd integer
+      :record |
+      {:record, atom} |                             # record of a certain kind
+      {:record, pos_integer} |                      # record of a certain size
+
+      # Additional: Comparison
+      {:==, term} | {:eq, term} |                   # equal
+      {:!=, term} | {:not_eq, term} |               # not equal
+      {:===, term} | {:strict_eq, term} |           # strict equal
+      {:!==, term} | {:not_strict_eq, term} |       # not strict equal
+      {:<, term} | {:lt, term} |                    # less than
+      {:<=, term} | {:lt_eq, term} |                # less than or equal
+      {:>, term} | {:gt, term} |                    # greater than
+      {:>=, term} | {:gt_eq, term} |                # greater than or equal
+
+      # Additional: Convenience
+      :empty_list |                                 # []
+      :false |
+      :falsey |                                     # false or nil
+      :negative |                                   # negative number (integer or float)
+      :neg_float |                                  # negative float
+      :positive |                                   # positive number (integer or float)
+      :pos_float |                                  # positive float
+      :true |
+      :truthy |                                     # any value that is not false nor nil
+      :zero |                                       # 0 or 0.0
+      :zero_or_negative |                           # number equal or less than 0
+      :zero_or_neg_float |                          # float equal or less than 0.0
+      :zero_or_neg_integer |                        # integer equal or less than 0
+      :zero_or_positive |                           # number equal or greater than 0
+      :zero_or_pos_float |                          # float equal or greater than 0.0
+
+      # Additional: Literal numbers
+      integer |                                     # literal integers. Ex: 42
+      float                                         # literal floats. Ex: 12.34
+
+  ## Examples
+
+      iex> is_kind(self, :pid)
+      true
+
+      iex> is_kind(&(&1), :function)
+      true
+
+      iex> is_kind(&(&1), {:function, 1})
+      true
+
+      iex> is_kind([1, 2], {:list, 1})
+      false
+
+  See also: `is/2`, `is_not/2`, `is_any/2`, `are/2`, `are_not/2`, `are_any/2`.
+
+  """
+  defmacro is_kind(term, kind) do
+    in_module? = (__CALLER__.context == nil)
+    kind = case bootstrapped?(Macro) and not in_module? do
+      true  -> Macro.expand(kind, __CALLER__)
+      false -> kind
+    end
+    quote do: unquote(__is_kind__(term, kind, __CALLER__))
+  end
+
+  defp __is_kind__(term, kind, caller) do
+    in_module? = (caller.context == nil)
+
+    # PENDING:
+    # - :charlist
+    # - :iodata
+    # - :iolist
+    # - :maybe_improper_list
+
+    case kind do
+      _ when in_module? ->
+        quote do: do_is_kind(unquote(term), unquote(kind))
+
+      # Basic and built-in types
+      k when k == :arity
+        when k == :byte ->
+        quote do: :erlang.is_integer(unquote(term)) and unquote(term) >= 0 and unquote(term) <= 255
+      :atom ->
+        quote do: :erlang.is_atom(unquote(term))
+      :binary ->
+        quote do: :erlang.is_binary(unquote(term))
+      :bitstring ->
+        quote do: :erlang.is_bitstring(unquote(term))
+      :boolean ->
+        quote do: :erlang.is_boolean(unquote(term))
+      :char ->
+        quote do
+          :erlang.is_integer(unquote(term)) and unquote(term) >=0 and
+            unquote(term) <= 0x10FFFF
+        end
+      :float ->
+        quote do: :erlang.is_float(unquote(term))
+      k when k == :function
+        when k == :fun ->
+        quote do: :erlang.is_function(unquote(term))
+      {k, arity} when (k == :function or k == :fun) ->
+        quote do: :erlang.is_function(unquote(term), unquote(arity))
+      :identifier ->
+        quote do
+          :erlang.is_pid(unquote(term)) or :erlang.is_port(unquote(term)) or
+            :erlang.is_reference(unquote(term))
+        end
+      :integer ->
+        quote do: :erlang.is_integer(unquote(term))
+      :list ->
+        quote do: :erlang.is_list(unquote(term))
+      {:list, length} ->
+        quote do: :erlang.is_list(unquote(term)) and :erlang.length(unquote(term)) == unquote(length)
+      :map ->
+        quote do: :erlang.is_map(unquote(term))
+      {:map, size} ->
+        quote do: :erlang.is_map(unquote(term)) and :erlang.map_size(unquote(term)) == unquote(size)
+      :mfa ->
+        quote do
+          :erlang.is_tuple(unquote(term)) and :erlang.tuple_size(unquote(term)) == 3 and
+            :erlang.is_atom(:erlang.element(1, unquote(term))) and
+            :erlang.is_atom(:erlang.element(2, unquote(term))) and
+            # is arity?
+            :erlang.is_integer(:erlang.element(3, unquote(term))) and :erlang.element(3, unquote(term)) >= 0 and :erlang.element(3, unquote(term)) <= 255
+        end
+      :module ->
+        quote do: :erlang.is_atom(unquote(term)) or :erlang.is_tuple(unquote(term))
+      :neg_integer ->
+        quote do: :erlang.is_integer(unquote(term)) and unquote(term) < 0
+      :node ->
+        quote do: :erlang.is_atom(unquote(term))
+      k when k == :non_neg_integer
+        when k == :"zero_or_pos_integer" ->
+        quote do: :erlang.is_integer(unquote(term)) and unquote(term) >= 0
+      :nonempty_list ->
+        quote do: :erlang.is_list(unquote(term)) and :erlang.length(unquote(term)) > 0
+      :number ->
+        quote do: :erlang.is_number(unquote(term))
+      :pid ->
+        quote do: :erlang.is_pid(unquote(term))
+      :port ->
+        quote do: :erlang.is_port(unquote(term))
+      :pos_integer ->
+        quote do: :erlang.is_integer(unquote(term)) and unquote(term) > 0
+      :reference ->
+        quote do: :erlang.is_reference(unquote(term))
+      :timeout ->
+        quote do
+          unquote(term) == :infinity or
+            (:erlang.is_integer(unquote(term)) and unquote(term) >= 0)
+        end
+      :tuple ->
+        quote do: :erlang.is_tuple(unquote(term))
+      {:tuple, size} ->
+        quote do
+          :erlang.is_tuple(unquote(term)) and :erlang.tuple_size(unquote(term)) == unquote(size)
+        end
+
+      # Additional: Derived from is_* functions
+      :even ->
+        quote do: :erlang.is_integer(unquote(term)) and :erlang.band(unquote(term), 1) == 0
+      :nil ->
+        quote do: unquote(term) == nil
+      :odd ->
+        quote do: :erlang.is_integer(unquote(term)) and :erlang.band(unquote(term), 1) == 1
+      :record ->
+        # This is an adaptation of Record.is_record/1
+        quote do
+          :erlang.is_tuple(unquote(term)) and :erlang.tuple_size(unquote(term)) > 0 and
+            :erlang.is_atom(:erlang.element(1, unquote(term)))
+        end
+      {:record, record_kind_or_size} ->
+        # This is an adaptation of Record.is_record/2
+        quote do
+          ( :erlang.is_tuple(unquote(term)) and :erlang.tuple_size(unquote(term)) > 0 ) and (
+            ( :erlang.is_atom(unquote(record_kind_or_size)) and
+                :erlang.element(1, unquote(term)) == unquote(record_kind_or_size) )
+            or
+            ( :erlang.is_integer(unquote(record_kind_or_size)) and
+                :erlang.tuple_size(unquote(term)) == unquote(record_kind_or_size) and
+                :erlang.is_atom(:erlang.element(1, unquote(term))) )
+          )
+        end
+
+      # Additional: Comparison
+      {k, value} when (k == :== or k == :eq) ->
+        quote do: :erlang.==(unquote(term), unquote(value))
+
+      {k, value} when (k == :!= or k == :not_eq) ->
+        quote do: :erlang."/="(unquote(term), unquote(value))
+
+      {k, value} when (k == :=== or k == :strict_eq) ->
+        quote do: :erlang."=:="(unquote(term), unquote(value))
+
+      {k, value} when (k == :!== or k == :not_strict_eq) ->
+        quote do: :erlang."=/="(unquote(term), unquote(value))
+
+      {k, value} when (k == :< or k == :lt) ->
+        quote do: :erlang.<(unquote(term), unquote(value))
+
+      {k, value} when (k == :<= or k == :lt_eq) ->
+        quote do: :erlang."=<"(unquote(term), unquote(value))
+
+      {k, value} when (k == :> or k == :gt) ->
+        quote do: :erlang.>(unquote(term), unquote(value))
+
+      {k, value} when (k == :>= or k == :gt_eq) ->
+        quote do: :erlang.>=(unquote(term), unquote(value))
+
+      # Additional: Convenience
+      :empty_list ->
+        quote do: :erlang.is_list(unquote(term)) and :erlang.length(unquote(term)) == 0
+      :false ->
+        quote do: unquote(term) == :false
+      :falsey ->
+        quote do: unquote(term) == nil or :erlang."=:="(unquote(term), :false)
+      :negative ->
+        quote do: :erlang.is_number(unquote(term)) and unquote(term) < 0
+      :neg_float ->
+        quote do: :erlang.is_float(unquote(term)) and unquote(term) < 0
+      :positive ->
+        quote do: :erlang.is_number(unquote(term)) and unquote(term) > 0
+      :pos_float ->
+        quote do: :erlang.is_float(unquote(term)) and unquote(term) > 0
+      :true ->
+        quote do: unquote(term) == :true
+      :truthy ->
+        quote do: unquote(term) != nil and :erlang."=/="(unquote(term), :false)
+      :zero ->
+        quote do: :erlang.is_number(unquote(term)) and unquote(term) == 0
+      :zero_or_negative ->
+        quote do: :erlang.is_number(unquote(term)) and unquote(term) <= 0
+      :zero_or_neg_float ->
+        quote do: :erlang.is_float(unquote(term)) and unquote(term) <= 0
+      :zero_or_neg_integer ->
+        quote do: :erlang.is_integer(unquote(term)) and unquote(term) <= 0
+      :zero_or_positive ->
+        quote do: :erlang.is_number(unquote(term)) and unquote(term) >= 0
+      :zero_or_pos_float ->
+        quote do: :erlang.is_float(unquote(term)) and unquote(term) >= 0
+
+      # Additional: Numbers
+      number when is_number(number) ->
+        quote do: :erlang."=:="(unquote(term), unquote(number))
+
+      _ ->
+        __is_kind_exception__(:"is_kind/2", {:second_arg, [term, kind]}, false)
+    end
+  end
+
+  # PENDING:
+  # - :charlist
+  # - :iodata
+  # - :iolist
+  # - :maybe_improper_list
+
+  # Basic and built-in types
+
+  @doc false
+  def do_is_kind(term, kind)
+      when kind == :arity
+      when kind == :byte do
+    :erlang.is_integer(term) and term >= 0 and term <= 255
+  end
+  def do_is_kind(term, :atom),
+    do: :erlang.is_atom(term)
+  def do_is_kind(term, :binary),
+    do: :erlang.is_binary(term)
+  def do_is_kind(term, :bitstring),
+    do: :erlang.is_bitstring(term)
+  def do_is_kind(term, :boolean),
+    do: :erlang.is_boolean(term)
+  def do_is_kind(term, :char),
+    do: :erlang.is_integer(term) and term >=0 and term <= 0x10FFFF
+  def do_is_kind(term, :float),
+    do: :erlang.is_float(term)
+  def do_is_kind(term, kind)
+      when kind == :fun
+      when kind == :function do
+    :erlang.is_function(term)
+  end
+  def do_is_kind(term, {kind, arity})
+      when kind == :fun
+      when kind == :function do
+    :erlang.is_function(term, arity)
+  end
+  def do_is_kind(term, :identifier),
+    do: :erlang.is_pid(term) or :erlang.is_port(term) or :erlang.is_reference(term)
+  def do_is_kind(term, :integer),
+    do: :erlang.is_integer(term)
+  def do_is_kind(term, :list),
+    do: :erlang.is_list(term)
+  def do_is_kind(term, {:list, length}) when is_integer(length) and length >= 0,
+    do: :erlang.is_list(term) and :erlang.length(term) == length
+  def do_is_kind(term, :map),
+    do: :erlang.is_map(term)
+  def do_is_kind(term, {:map, size}) when is_integer(size) and size >= 0,
+    do: :erlang.is_map(term) and :erlang.map_size(term) == size
+  def do_is_kind(term, :mfa) do
+    case term do
+      {m, f, a} when :erlang.is_atom(m) and :erlang.is_atom(f) and
+          :erlang.is_integer(a) and a >= 0 and a <= 255 ->
+        true
+      _ ->
+        false
+    end
+  end
+  def do_is_kind(term, :module),
+    do: :erlang.is_atom(term) or :erlang.is_tuple(term)
+  def do_is_kind(term, :neg_integer),
+    do: :erlang.is_integer(term) and term < 0
+  def do_is_kind(term, :node),
+    do: :erlang.is_atom(term)
+  def do_is_kind(term, kind)
+      when kind == :non_neg_integer
+      when kind == :zero_or_pos_integer do
+    :erlang.is_integer(term) and term >= 0
+  end
+  def do_is_kind(term, :nonempty_list),
+    do: :erlang.is_list(term) and :erlang.length(term) > 0
+  def do_is_kind(term, :number),
+    do: :erlang.is_number(term)
+  def do_is_kind(term, :pid),
+    do: :erlang.is_pid(term)
+  def do_is_kind(term, :port),
+    do: :erlang.is_port(term)
+  def do_is_kind(term, :pos_integer),
+    do: :erlang.is_integer(term) and term > 0
+  def do_is_kind(term, :reference),
+    do: :erlang.is_reference(term)
+  def do_is_kind(term, :timeout),
+    do: term == :infinity or (:erlang.is_integer(term) and term >= 0)
+  def do_is_kind(term, :tuple),
+    do: :erlang.is_tuple(term)
+  def do_is_kind(term, {:tuple, size}) when is_integer(size) and size >= 0,
+    do: :erlang.is_tuple(term) and :erlang.tuple_size(term) == size
+
+  # Additional: Derived from is_* functions
+  def do_is_kind(term, :even),
+    # Maybe delegate to Integer.is_even/1 ?
+    do: :erlang.is_integer(term) and :erlang.band(term, 1) == 0
+  def do_is_kind(term, :nil),
+    # Maybe delegate to is_nil/1 ?
+    do: term == nil
+  def do_is_kind(term, :odd),
+    # Maybe delegate to Integer.is_odd/1 ?
+    do: :erlang.is_integer(term) and :erlang.band(term, 1) == 1
+
+  def do_is_kind(term, :record) do
+    # Maybe delegate to Record.is_record/1 ?
+    :erlang.is_tuple(term) and :erlang.tuple_size(term) > 0 and
+      :erlang.is_atom(:erlang.element(1, term))
+  end
+
+  def do_is_kind(term, {:record, record_kind}) when is_atom(record_kind) do
+    # Maybe use to Record.is_record/2 ?
+    :erlang.is_tuple(term) and :erlang.tuple_size(term) > 0 and
+      :erlang.element(1, term) == record_kind
+  end
+
+  def do_is_kind(term, {:record, size}) when is_integer(size) and size > 0 do
+    # Maybe use to Record.is_record/1 and :erlang.tuple_size ?
+    :erlang.is_tuple(term) and :erlang.tuple_size(term) > 0 and :erlang.tuple_size(term) == size and
+      :erlang.is_atom(:erlang.element(1, term))
+  end
+
+  # Additional: Convenience
+  def do_is_kind(term, :empty_list),
+    do: :erlang.is_list(term) and :erlang.length(term) == 0
+  def do_is_kind(term, :false),
+    do: term == false
+  def do_is_kind(term, :falsey),
+    do: term == nil or :erlang."=:="(term, :false)
+  def do_is_kind(term, :negative),
+    do: :erlang.is_number(term) and term < 0
+  def do_is_kind(term, :neg_float),
+    do: :erlang.is_float(term) and term < 0
+  def do_is_kind(term, :positive),
+    do: :erlang.is_number(term) and term > 0
+  def do_is_kind(term, :pos_float),
+    do: :erlang.is_float(term) and term > 0
+  def do_is_kind(term, :true),
+    do: term == true
+  def do_is_kind(term, :truthy),
+    do: term != nil and :erlang."=/="(term, :false)
+  def do_is_kind(term, :zero),
+    do: :erlang.is_number(term) and term == 0
+  def do_is_kind(term, :zero_or_negative),
+    do: :erlang.is_number(term) and term <= 0
+  def do_is_kind(term, :zero_or_neg_float),
+    do: :erlang.is_float(term) and term <= 0
+  def do_is_kind(term, :zero_or_neg_integer),
+    do: :erlang.is_integer(term) and term <= 0
+  def do_is_kind(term, :zero_or_positive),
+    do: :erlang.is_number(term) and term >= 0
+  def do_is_kind(term, :zero_or_pos_float),
+    do: :erlang.is_float(term) and term >= 0
+
+  # Additional: Comparison
+  def do_is_kind(term, {kind, value}) when (kind == :== or kind == :eq),
+    do: :erlang.==(term, value)
+
+  def do_is_kind(term, {kind, value}) when (kind == :!= or kind == :not_eq),
+    do: :erlang."/="(term, value)
+
+  def do_is_kind(term, {kind, value}) when (kind == :=== or kind == :strict_eq),
+    do: :erlang."=:="(term, value)
+
+  def do_is_kind(term, {kind, value}) when (kind == :!==  or kind == :not_strict_eq),
+    do: :erlang."=/="(term, value)
+
+  def do_is_kind(term, {kind, value}) when (kind == :<  or kind == :lt),
+    do: :erlang.<(term, value)
+
+  def do_is_kind(term, {kind, value}) when (kind == :<= or kind == :lt_eq),
+    do: :erlang."=<"(term, value)
+
+  def do_is_kind(term, {kind, value}) when (kind == :> or kind == :gt),
+    do: :erlang.>(term, value)
+
+  def do_is_kind(term, {kind, value}) when (kind == :>= or kind == :gt_eq),
+    do: :erlang.>=(term, value)
+
+  # numbers
+  def do_is_kind(term, number) when is_number(number),
+    do: :erlang."=:="(term, number)
+
+  # error
+  def do_is_kind(term, kind),
+    do: __is_kind_exception__(:"is_kind/2", {:second_arg, [term, kind]}, false)
+
+  defp __is_not_kind__(term, kind, caller) do
+    quote do: :erlang.not(unquote(__is_kind__(term, kind, caller)))
+  end
+
+  @doc """
+  Returns `true` if `term` is of each kind in `kinds`.
+
+  `kinds` can be a number, atom, tuple, or list of kinds.
+  For a list of supported kinds, please check `is_kind/2`.
+
+  When used in guard expressions: `kinds` must be a compile-time number, atom or tuple with its
+  first element being a compile-time atom; or a list of these items.
+
+  Allowed in guard tests.
+
+  ## Examples
+
+      iex> :foo is :atom
+      true
+
+      iex> 100 is [:even, :zero_or_pos_integer]
+      true
+
+      iex> 100 is [:even, :zero_or_pos_float]
+      false
+
+  """
+  defmacro term is kinds do
+    in_module? = (__CALLER__.context == nil)
+    kinds = case bootstrapped?(Macro) and not in_module? do
+      true  -> Macro.expand(kinds, __CALLER__)
+      false -> kinds
+    end
+    quote do: unquote(__is__(term, kinds, __CALLER__))
+  end
+
+  defp __is__(term, kinds, caller) do
+    in_module? = (caller.context == nil)
+
+    cond do
+      in_module? ->
+        quote do: do_is(unquote(term), unquote(kinds))
+
+      is_atom(kinds) or is_number(kinds) or
+          (is_tuple(kinds) and tuple_size(kinds) == 2 and is_atom(:erlang.element(1, kinds))) ->
+        quote do: unquote(__is_kind__(term, kinds, caller))
+
+      [h | t] = kinds ->
+        :lists.foldr(fn kind, acc ->
+          quote do: :erlang.andalso(unquote(__is_kind__(term, kind, caller)), unquote(acc))
+        end, __is_kind__(term, h, caller), t)
+
+      true ->
+        __is_kind_exception__(:is, {:right, [term, kinds]}, true)
+    end
+  end
+
+ @doc false
+  def do_is(term, kind)
+    when is_atom(kind) or is_number(kind) or
+      (is_tuple(kind) and tuple_size(kind) == 2 and is_atom(:erlang.element(1, kind))),
+    do: do_is_kind(term, kind)
+
+  def do_is(term, [h | t]) do
+    :lists.foldr(fn kind, acc ->
+      :erlang.andalso(do_is_kind(term, kind), acc)
+    end, do_is_kind(term, h), t)
+  end
+
+  def do_is(term, kinds) do
+    __is_kind_exception__(:is, {:right, [term, kinds]}, false)
+  end
+
+  @doc """
+  Returns `true` if `term` is not of all the `kinds`.
+
+  `kinds` can be a number, atom, tuple, or list of kinds.
+  For a list of supported kinds, please check `is_kind/2`.
+
+  When used in guard expressions: `kinds` must be a compile-time number, atom or tuple with its
+  first element being a compile-time atom; or a list of these items.
+
+  Allowed in guard tests.
+
+  ## Examples
+
+      iex> 1 is_not :atom
+      true
+
+      iex> 100 is_not [:odd, :zero_or_pos_float]
+      true
+
+      iex> 100 is_not [:even, :zero_or_pos_float]
+      false
+
+  """
+  defmacro term is_not kinds do
+    in_module? = (__CALLER__.context == nil)
+    kinds = case bootstrapped?(Macro) and not in_module? do
+      true  -> Macro.expand(kinds, __CALLER__)
+      false -> kinds
+    end
+    quote do: unquote(__is_not__(term, kinds, __CALLER__))
+  end
+
+  defp __is_not__(term, kinds, caller) do
+    in_module? = (caller.context == nil)
+
+    cond do
+      in_module? ->
+        quote do: do_is_not(unquote(term), unquote(kinds))
+
+      is_atom(kinds) or is_number(kinds) or
+        (is_tuple(kinds) and tuple_size(kinds) == 2 and is_atom(:erlang.element(1, kinds))) ->
+        quote do: unquote(__is_not_kind__(term, kinds, caller))
+
+      [h | t] = kinds ->
+        :lists.foldr(fn kind, acc ->
+          quote do: :erlang.andalso(unquote(__is_not_kind__(term, kind, caller)), unquote(acc))
+        end, __is_not_kind__(term, h, caller), t)
+
+      true ->
+        __is_kind_exception__(:is_not, {:right, [term, kinds]}, true)
+    end
+  end
+
+ @doc false
+  def do_is_not(term, kind)
+    when is_atom(kind) or is_number(kind) or
+      (is_tuple(kind) and tuple_size(kind) == 2 and is_atom(:erlang.element(1, term))),
+    do: :erlang.not(do_is_kind(term, kind))
+
+  def do_is_not(term, [h | t]) do
+    :lists.foldr(fn kind, acc ->
+      :erlang.andalso(:erlang.not(do_is_kind(term, kind)), acc)
+    end, :erlang.not(do_is_kind(term, h)), t)
+  end
+
+  def do_is_not(term, kinds) do
+    __is_kind_exception__(:is_not, {:right, [term, kinds]}, false)
+  end
+
+  @doc """
+  Returns `true` if `term` is at least of one kind in `kinds`.
+
+  `kinds` is a list of kinds.
+  For a list of supported kinds, please check `is_kind/2`.
+
+  When used in guard expressions: `kinds` must be a compile-time list, and each kind in this list
+  must be a compile-time number, atom or tuple with its first element being a compile-time atom.
+
+  Allowed in guard tests.
+
+  ## Examples
+
+      iex> :foo is_any [:atom]
+      true
+
+      iex> 100 is_any [:even, :zero_or_pos_float]
+      true
+
+      iex> self is_any [:atom, :module, :port]
+      false
+
+  """
+  defmacro term is_any kinds do
+    in_module? = (__CALLER__.context == nil)
+    kinds = case bootstrapped?(Macro) and not in_module? do
+      true  -> Macro.expand(kinds, __CALLER__)
+      false -> kinds
+    end
+    quote do: unquote(__is_any__(term, kinds, __CALLER__))
+  end
+
+  defp __is_any__(term, kinds, caller) do
+    in_module? = (caller.context == nil)
+
+    cond do
+      in_module? ->
+        quote do: do_is_any(unquote(term), unquote(kinds))
+
+      [h | t] = kinds ->
+        :lists.foldr(fn kind, acc ->
+          quote do: :erlang.orelse(unquote(__is_kind__(term, kind, caller)), unquote(acc))
+        end, __is_kind__(term, h, caller), t)
+
+      true ->
+        __is_kind_exception__(:is_any, {:right, [term, kinds]}, true)
+    end
+  end
+
+  @doc false
+  def do_is_any(term, [h | t]) do
+    :lists.foldr(fn kind, acc ->
+      :erlang.orelse(do_is_kind(term, kind), acc)
+    end, do_is_kind(term, h), t)
+  end
+
+  def do_is_any(list, kinds) do
+    __is_kind_exception__(:is_any, {:right, [list, kinds]}, false)
+  end
+
+  @doc """
+  Returns `true` if every term in `list` is of every kind in `kinds`.
+
+  `list` must be a list of terms to be checked.
+
+  `kinds` can be a number, atom, tuple, or list of kinds.
+  For a list of supported kinds, please check `is_kind/2`.
+
+  Allowed in guard tests.
+
+  When used in guard expressions:
+
+    * `list` must be a compile-time list. Items in the list do not need to be available at compile-time.
+
+    * `kinds` must be a compile-time number, atom or tuple with its first element being a
+      compile-time atom; or a list of these items;
+
+  For example, the following function won't compile:
+
+      def are_records(list) when list are :record,
+        do: true
+      # => ** (ArgumentError) invalid args for "are" operator, it expects a compile-time list of terms on the left side, got: list
+
+  So if you know the number of items to be checked, what you can do is pass a list of items defined
+  in the function declaration (remember, the items don't need to be defined at compile time,
+  only the list containing them).
+
+      def are_records(item1, item2, item3) when [item1, item2,  item3] are :record,
+        do: true
+
+  ## Examples
+
+      iex> [1, 34, 255] are [:integer, :positive, :byte]
+      true
+
+      iex> [1, 34, 0] are [:integer, :positive, :byte]
+      false
+
+      # when not used in guards, list does not need to be defined at compile-time
+      iex> check_records? = fn(list) -> list are [:record] end
+      ...> check_records?.([:foo, :bar])
+      false
+
+  """
+  defmacro list are kinds do
+    in_module? = (__CALLER__.context == nil)
+    kinds = case bootstrapped?(Macro) and not in_module? do
+      true  -> Macro.expand(kinds, __CALLER__)
+      false -> kinds
+    end
+    quote do: unquote(__are__(list, kinds, __CALLER__))
+  end
+
+  defp __are__(list, kinds, caller) do
+    in_module? = (caller.context == nil)
+
+    cond do
+      in_module? ->
+        quote do: do_are(unquote(list), unquote(kinds))
+
+      list == [] or not is_list(list) ->
+        __is_kind_exception__(:are, {:left, [list, kinds]}, true)
+
+      true ->
+        case list do
+          [h | t] when (is_list(kinds) and length(kinds) > 0) or is_atom(kinds) or is_number(kinds) or
+            (is_tuple(kinds) and tuple_size(kinds) == 2 and is_atom(:erlang.element(1, kinds))) ->
+            :lists.foldr(fn item, acc ->
+              quote do: :erlang.andalso(unquote(__is__(item, kinds, caller)), unquote(acc))
+            end, __is__(h, kinds, caller), t)
+
+          _ ->
+            __is_kind_exception__(:are, {:right, [list, kinds]}, true)
+        end
+    end
+  end
+
+  @doc false
+  def do_are(list, kinds) when list == [] or not is_list(list),
+    do: __is_kind_exception__(:are, {:left, [list, kinds]}, false)
+
+  def do_are(list, kinds) when not(
+      is_atom(kinds) or is_number(kinds) or (is_tuple(kinds) and tuple_size(kinds) == 2) or
+        is_list(kinds) and length(kinds) > 0) do
+    __is_kind_exception__(:are, {:right, [list, kinds]}, false)
+  end
+
+  def do_are([h | t], kinds) do
+    :lists.foldr(fn item, acc ->
+      :erlang.andalso(do_is(item, kinds), acc)
+    end, do_is(h, kinds), t)
+  end
+
+  @doc """
+  Returns `true` if every term in `list` is not of any kind in `kinds`.
+
+  See `are/2` for information about accepted values for `list` and `kinds`.
+
+  Allowed in guard tests.
+
+  ## Examples
+
+      iex> [:foo, 10.0, "string"] are_not [:integer, :zero, :pid]
+      true
+
+      iex> [:atom, 0.0, "string"] are_not [:integer, :zero, :pid]
+      false
+
+  """
+  defmacro list are_not kinds do
+    in_module? = (__CALLER__.context == nil)
+    kinds = case bootstrapped?(Macro) and not in_module? do
+      true  -> Macro.expand(kinds, __CALLER__)
+      false -> kinds
+    end
+    quote do: unquote(__are_not__(list, kinds, __CALLER__))
+  end
+
+  defp __are_not__(list, kinds, caller) do
+    in_module? = (caller.context == nil)
+
+    cond do
+      in_module? ->
+        quote do: do_are_not(unquote(list), unquote(kinds))
+
+      list == [] and not is_list(list) ->
+        __is_kind_exception__(:are_not, {:left, [list, kinds]}, true)
+
+      true ->
+        case list do
+          [h | t] when (is_list(kinds) and length(kinds) > 0) or is_atom(kinds) or is_number(kinds) or
+            (is_tuple(kinds) and tuple_size(kinds) == 2 and is_atom(:erlang.element(1, kinds))) ->
+            :lists.foldr(fn item, acc ->
+              quote do: :erlang.andalso(unquote(__is_not__(item, kinds, caller)), unquote(acc))
+            end, __is_not__(h, kinds, caller), t)
+
+          _ ->
+            __is_kind_exception__(:are_not, {:right, [list, kinds]}, true)
+        end
+    end
+  end
+
+  @doc false
+  def do_are_not(list, kinds) when list == [] or not is_list(list),
+    do: __is_kind_exception__(:are_not, {:left, [list, kinds]}, false)
+
+  def do_are_not(list, kinds) when not(
+      is_atom(kinds) or is_number(kinds) or (is_tuple(kinds) and tuple_size(kinds) == 2) or
+        is_list(kinds) and length(kinds) > 0) do
+    __is_kind_exception__(:are_not, {:right, [list, kinds]}, false)
+  end
+
+  def do_are_not([h | t], kinds) do
+    :lists.foldr(fn item, acc ->
+      :erlang.andalso(do_is_not(item, kinds), acc)
+    end, do_is_not(h, kinds), t)
+  end
+
+  @doc """
+  Returns `true` if every term in `list` is at least of one kind in `kinds`.
+
+  `list` is a list of terms for be checked against `kinds`.
+
+  `kinds` is a list of kinds.
+  For a list of supported kinds, please check `is_kind/2`.
+
+  Allowed in guard tests.
+
+  When used in guard expressions:
+
+    * `list` must be a compile-time list. Items in the list do not need to be available at compile time.
+
+    * `kinds` must be a compile-time list of supported kinds;
+
+  ## Examples
+
+      iex> [:foo, Kernel, 10] are_any [:atom, :integer]
+      true
+
+      iex> [:foo, Kernel, 10.0] are_any [:atom, :integer]
+      false
+
+  """
+  defmacro list are_any kinds do
+    in_module? = (__CALLER__.context == nil)
+    kinds = case bootstrapped?(Macro) and not in_module? do
+      true  -> Macro.expand(kinds, __CALLER__)
+      false -> kinds
+    end
+    quote do: unquote(__are_any__(list, kinds, __CALLER__))
+  end
+
+  defp __are_any__(list, kinds, caller) do
+    in_module? = (caller.context == nil)
+
+    cond do
+      in_module? ->
+        quote do: do_are_any(unquote(list), unquote(kinds))
+
+      list == [] or not is_list(list) ->
+        __is_kind_exception__(:are_any, {:left, [list, kinds]}, true)
+
+      [h | t] = list ->
+        :lists.foldr(fn item, acc ->
+          quote do: :erlang.andalso(unquote(__is_any__(item, kinds, caller)), unquote(acc))
+        end, __is_any__(h, kinds, caller), t)
+
+      true ->
+        __is_kind_exception__(:are_any, {:right, [list, kinds]}, true)
+    end
+  end
+
+  # TODO: QUESTION
+  # I'm not sure wether we should optimize for list == [],
+  # because `[] are_any [:foo]` or `[] are [:foo]` will return false,
+  # and not raise
+
+  @doc false
+  def do_are_any(list, kinds) when list == [] or not is_list(list),
+    do: __is_kind_exception__(:are_any, {:left, [list, kinds]}, false)
+
+  def do_are_any(list, kinds) when not (is_list(kinds) and length(kinds) > 0) do
+    __is_kind_exception__(:are_any, {:right, [list, kinds]}, false)
+  end
+
+  def do_are_any([h | t], kinds) do
+    :lists.foldr(fn item, acc ->
+      :erlang.andalso(do_is_any(item, kinds), acc)
+    end, do_is_any(h, kinds), t)
+  end
+
+
+  def __is_kind_exception__(function, {:second_arg, [_term, kind]}, compile_time?)
+      when function == :"is_kind/2" do
+    a_compile_time = if compile_time?, do: "a compile-time", else: "a"
+    raise ArgumentError, <<"invalid args for \"#{function}\", it expects as its second argument ",
+                           "#{a_compile_time} number or accepted atom or tuple (with first element being #{a_compile_time} atom), got: ",
+                           Macro.to_string(kind) :: binary>>
+  end
+
+  def __is_kind_exception__(operator, {:left, [list, _kinds]}, compile_time?)
+      when operator == :are
+      when operator == :are_not
+      when operator == :are_any do
+    a_compile_time = if compile_time?, do: "a compile-time", else: "a"
+    raise ArgumentError, <<"invalid args for \"#{operator}\" operator, it expects ",
+                           "#{a_compile_time} list of terms on the left side, got: ",
+                           Macro.to_string(list) :: binary>>
+  end
+
+  def __is_kind_exception__(operator, {:right, [term, kinds]}, compile_time?)
+      when operator == :is_any
+      when operator == :are_any do
+    a_compile_time = if compile_time?, do: "a compile-time", else: "a"
+    raise ArgumentError, <<"invalid args for \"#{operator}\" operator, it expects ",
+                           "#{a_compile_time} list of kinds on the right side, got: ",
+                           Macro.to_string({term, kinds}) :: binary>>
+  end
+
+  def __is_kind_exception__(operator, {:right, [term, kinds]}, compile_time?) do
+    a_compile_time = if compile_time?, do: "a compile-time", else: "a"
+    raise ArgumentError, <<"invalid args for operator \"#{operator}\", it expects ",
+                           "either #{a_compile_time} number or accepted atom or tuple (with first element being #{a_compile_time} atom) or list of kinds got: ",
+                           Macro.to_string({term, kinds}) :: binary>>
   end
 end
