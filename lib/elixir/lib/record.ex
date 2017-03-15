@@ -36,6 +36,10 @@ defmodule Record do
 
   """
 
+  @opaque type :: :defrecord | :defrecordp
+  @type name :: atom
+  @type tag :: atom
+
   @doc """
   Extracts record information from an Erlang file.
 
@@ -71,6 +75,7 @@ defmodule Record do
        uid: :undefined, gid: :undefined]
 
   """
+  @spec extract(name, Keyword.t) :: Keyword.t
   def extract(name, opts) when is_atom(name) and is_list(opts) do
     Record.Extractor.extract(name, opts)
   end
@@ -99,6 +104,7 @@ defmodule Record do
   These options are expected to be literals (including the binary values) at
   compile time.
   """
+  @spec extract_all(Keyword.t) :: [{name, Keyword.t}] | no_return
   def extract_all(opts) when is_list(opts) do
     Record.Extractor.extract_all(opts)
   end
@@ -289,16 +295,19 @@ defmodule Record do
 
   # Normalizes of record fields to have default values.
   @doc false
+  @spec __fields__(type, {key, value}) :: {key, value} when key: atom, value: term | no_return
+  @spec __fields__(type, key) :: key when key: atom
+  @spec __fields__(type, term) :: no_return
   def __fields__(type, fields) do
     :lists.map(fn
-      {key, val} when is_atom(key) ->
+      {key, value} when is_atom(key) ->
         try do
-          Macro.escape(val)
+          Macro.escape(value)
         rescue
           e in [ArgumentError] ->
             raise ArgumentError, "invalid value for record field #{key}, " <> Exception.message(e)
         else
-          val -> {key, val}
+          value -> {key, value}
         end
       key when is_atom(key) ->
         {key, nil}
@@ -309,7 +318,9 @@ defmodule Record do
 
   # Callback invoked from record/0 and record/1 macros.
   @doc false
-  def __access__(atom, fields, args, caller) do
+  @spec __access__(tag, fields :: Keyword.t, args :: atom, caller :: Macro.Env) :: non_neg_integer
+  @spec __access__(tag, fields :: Keyword.t, args :: Keyword.t, caller :: Macro.Env) :: Macro.t
+  def __access__(atom, fields, args, caller) when is_atom(atom) and is_map(caller) do
     cond do
       is_atom(args) ->
         index(atom, fields, args)
@@ -330,7 +341,8 @@ defmodule Record do
 
   # Callback invoked from the record/2 macro.
   @doc false
-  def __access__(atom, fields, record, args, caller) do
+  @spec __access__(tag, fields :: Keyword.t, record :: tuple, args :: atom | Keyword.t, caller :: Macro.Env) :: Macro.t
+  def __access__(atom, fields, record, args, caller) when is_atom(atom) and is_map(caller) do
     cond do
       is_atom(args) ->
         get(atom, fields, record, args)
@@ -415,6 +427,7 @@ defmodule Record do
 
   # Returns a keyword list of the record
   @doc false
+  @spec __keyword__(atom, Keyword.t, tuple) :: Keyword.t | no_return
   def __keyword__(atom, fields, record) do
     if is_record(record, atom) do
       [_tag | values] = Tuple.to_list(record)

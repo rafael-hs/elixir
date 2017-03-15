@@ -1,6 +1,8 @@
 defmodule Record.Extractor do
   @moduledoc false
 
+  @spec extract(Record.name, Keyword.t) :: Keyword.t | no_return
+
   # Retrieve a record definition from an Erlang file using
   # the same lookup as the *include* attribute from Erlang modules.
   def extract(name, from: file) when is_binary(file) do
@@ -12,6 +14,8 @@ defmodule Record.Extractor do
   def extract(name, from_lib: file) when is_binary(file) do
     extract_record(name, from_lib_file(file))
   end
+
+  @spec extract_all(Keyword.t) :: [{Record.name, Keyword.t}] | no_return
 
   # Retrieve all records definitions from an Erlang file using
   # the same lookup as the *include* attribute from Erlang modules.
