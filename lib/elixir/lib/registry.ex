@@ -27,14 +27,18 @@ defmodule Registry do
   `Registry.start_link/3`, it can be used to register and access named
   processes using the `{:via, Registry, {registry, key}}` tuple:
 
-      {:ok, _} = Registry.start_link(:unique, Registry.ViaTest)
-      name = {:via, Registry, {Registry.ViaTest, "agent"}}
-      {:ok, _} = Agent.start_link(fn -> 0 end, name: name)
-      Agent.get(name, & &1)
-      #=> 0
-      Agent.update(name, & &1 + 1)
-      Agent.get(name, & &1)
-      #=> 1
+      iex> {:ok, _} = Registry.start_link(:unique, Registry.ViaTest)
+      #=> {:ok, #PID<0.82.0>}
+      iex> name = {:via, Registry, {Registry.ViaTest, "agent"}}
+      {:via, Registry, {Registry.ViaTest, "agent"}}
+      iex> {:ok, _} = Agent.start_link(fn -> 0 end, name: name)
+      #=> {:ok, #PID<0.86.0>}
+      iex> Agent.get(name, & &1)
+      0
+      iex> Agent.update(name, & &1 + 1)
+      :ok
+      iex> Agent.get(name, & &1)
+      1
 
   Typically the registry is started as part of a supervision tree though:
 
@@ -50,7 +54,8 @@ defmodule Registry do
   dispatch logic triggered from the caller. For example, let's say we have a
   duplicate registry started as so:
 
-      {:ok, _} = Registry.start_link(:duplicate, Registry.DispatcherTest)
+      iex> {:ok, _} = Registry.start_link(:duplicate, Registry.DispatcherTest)
+      #=> {:ok, #PID<0.91.0>}
 
   By calling `register/3`, different processes can register under a given key
   and associate any value under that key. In this case, let's register the
@@ -58,6 +63,7 @@ defmodule Registry do
   to it:
 
       {:ok, _} = Registry.register(Registry.DispatcherTest, "hello", {IO, :inspect})
+      #=> {:ok, #PID<0.92.0>}
 
   Now, an entity interested in dispatching events for a given key may call
   `dispatch/3` passing in the key and a callback. This callback will be invoked
@@ -69,7 +75,7 @@ defmodule Registry do
       Registry.dispatch(Registry.DispatcherTest, "hello", fn entries ->
         for {pid, {module, function}} <- entries, do: apply(module, function, [pid])
       end)
-      # Prints #PID<...> where the pid is for the process that called register/3 above
+      #>> #PID<0.80.0> # Prints the pid for the process that called register/3 above
       #=> :ok
 
   Dispatching happens in the process that calls `dispatch/3` either serially or
@@ -94,8 +100,8 @@ defmodule Registry do
           end
         end
       end)
-      # Prints #PID<...>
-      #=> :ok
+      #>> #PID<0.80.0>
+      :ok
 
   You could also replace the whole `apply` system by explicitly sending
   messages. That's the example we will see next.
@@ -112,13 +118,13 @@ defmodule Registry do
   concurrent environments as each partition will spawn a new process, allowing
   dispatching to happen in parallel:
 
-      {:ok, _} = Registry.start_link(:duplicate, Registry.PubSubTest,
-                                     partitions: System.schedulers_online)
-      {:ok, _} = Registry.register(Registry.PubSubTest, "hello", [])
-      Registry.dispatch(Registry.PubSubTest, "hello", fn entries ->
-        for {pid, _} <- entries, do: send(pid, {:broadcast, "world"})
-      end)
-      #=> :ok
+      iex> {:ok, _} = Registry.start_link(:duplicate, Registry.PubSubTest,
+      ...>                                partitions: System.schedulers_online)
+      iex> {:ok, _} = Registry.register(Registry.PubSubTest, "hello", [])
+      iex> Registry.dispatch(Registry.PubSubTest, "hello", fn entries ->
+      ...>   for {pid, _} <- entries, do: send(pid, {:broadcast, "world"})
+      ...> end)
+      :ok
 
   The example above broadcasted the message `{:broadcast, "world"}` to all
   processes registered under the "topic" (or "key" as we called it until now)

@@ -2,7 +2,7 @@ Code.require_file "test_helper.exs", __DIR__
 
 defmodule RegistryTest do
   use ExUnit.Case, async: true
-  doctest Registry, except: [:moduledoc]
+  doctest Registry
 
   setup config do
     kind = config[:kind] || :unique
