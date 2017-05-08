@@ -185,17 +185,17 @@ defmodule ExUnit.DocTest do
 
   This macro is auto-imported with every `ExUnit.Case`.
   """
-  defmacro doctest(mod, opts \\ []) do
+  defmacro doctest(module, options \\ []) do
     require =
-      if is_atom Macro.expand(mod, __CALLER__) do
+      if is_atom Macro.expand(module, __CALLER__) do
         quote do
-          require unquote(mod)
+          require unquote(module)
         end
       end
 
-    tests = quote bind_quoted: binding() do
-      file = "(for doctest at) " <> Path.relative_to_cwd(mod.__info__(:compile)[:source])
-      for {name, test} <- ExUnit.DocTest.__doctests__(mod, opts) do
+    tests = quote bind_quoted: [module: module, options: options] do
+      file = "(for doctest at) " <> Path.relative_to_cwd(module.__info__(:compile)[:source])
+      for {name, test} <- ExUnit.DocTest.__doctests__(module, options) do
         @tag :doctest
         @file file
         test name, do: unquote(test)
@@ -206,20 +206,24 @@ defmodule ExUnit.DocTest do
   end
 
   @doc false
-  def __doctests__(module, opts) do
-    do_import = Keyword.get(opts, :import, false)
+  def __doctests__(module, options) do
+    import_modules = [
+        {module, Keyword.get(options, :import, false)},
+        {IEx.Helpers, Keyword.get(options, :import_iex_helpers, false)},
+      ]
 
     extract(module)
-    |> filter_by_opts(opts)
+    |> filter_by_options(options)
     |> Stream.with_index
     |> Enum.map(fn {test, acc} ->
-      compile_test(test, module, do_import, acc + 1)
+      compile_test(test, module, acc + 1, import_modules)
     end)
   end
 
-  defp filter_by_opts(tests, opts) do
+  defp filter_by_options(tests, opts) do
     only   = opts[:only] || []
     except = opts[:except] || []
+
     tests
     |> Stream.reject(&(&1.fun_arity in except))
     |> Stream.filter(&(Enum.empty?(only) or &1.fun_arity in only))
@@ -227,8 +231,8 @@ defmodule ExUnit.DocTest do
 
   ## Compilation of extracted tests
 
-  defp compile_test(test, module, do_import, n) do
-    {test_name(test, module, n), test_content(test, module, do_import)}
+  defp compile_test(test, module, n, import_modules) do
+    {test_name(test, module, n), test_content(test, module, import_modules)}
   end
 
   defp test_name(%{fun_arity: :moduledoc}, m, n) do
@@ -239,7 +243,7 @@ defmodule ExUnit.DocTest do
     "doc at #{inspect m}.#{f}/#{a} (#{n})"
   end
 
-  defp test_content(%{exprs: exprs, line: line}, module, do_import) do
+  defp test_content(%{exprs: exprs, line: line}, module, import_modules) do
     file     = module.__info__(:compile)[:source] |> Path.relative_to_cwd
     location = [line: line, file: file]
     stack    = Macro.escape [{module, :__MODULE__, 0, location}]
@@ -254,7 +258,7 @@ defmodule ExUnit.DocTest do
     end
 
     quote do
-      unquote_splicing(test_import(module, do_import))
+      unquote_splicing(test_import(import_modules))
       unquote(gen_code_for_tests(tests, whole_expr(exprs), stack))
     end
   end
@@ -304,6 +308,18 @@ defmodule ExUnit.DocTest do
              expr: "#{unquote(String.trim(expr))} === #{unquote(String.trim(expected))}",
              left: actual],
             unquote(stack)
+      end
+    end
+  end
+
+  defp test_case_content(expr, {tag, _comment}, location, stack)
+       when tag in [:result_comment, :print_comment] do
+    expr_ast = string_to_quoted(location, stack, expr)
+    # It is necessary to do this to avoid warning of variables not being used and such,
+    # if they are used in the last expression
+    quote do
+      case !(unquote(expr_ast)) do
+        _ -> :ok
       end
     end
   end
@@ -369,9 +385,16 @@ defmodule ExUnit.DocTest do
     end
   end
 
-  defp test_import(_mod, false), do: []
-  defp test_import(mod, _) do
-    [quote do: import(unquote(mod))]
+  defp test_import(import_modules) do
+    for {module, options} when options != false <- import_modules do
+      case options do
+        options when is_list(options) or options in [:functions, :macros] ->
+          quote do: import(unquote(module), unquote(options))
+        # REVIEW: this is a breaking change, because before any invalid option for :import would be accepted
+        true ->
+          quote do: import(unquote(module))
+      end
+    end
   end
 
   defp string_to_quoted(location, stack, expr) do
@@ -459,8 +482,10 @@ defmodule ExUnit.DocTest do
       "" ->
         raise Error, line: line_no, module: module,
                      message: "expected non-blank line to follow iex> prompt"
+
       ^stripped_line ->
         :ok
+
       _ ->
         n_spaces = if indent == 1,
           do: "#{indent} space",
@@ -512,26 +537,47 @@ defmodule ExUnit.DocTest do
 
   @fences ["```", "~~~"]
 
-  defp extract_tests(lines, expr_acc, expected_acc, acc, new_test, module)
+  defp extract_tests(lines, expr_acc, expected_acc, acc, new_test?, module)
   defp extract_tests([], "", "", [], _, _) do
     []
   end
 
   defp extract_tests([], "", "", acc, _, _) do
-    Enum.reverse(acc)
+    :lists.reverse(acc)
   end
 
   # End of input and we've still got a test pending.
   defp extract_tests([], expr_acc, expected_acc, [test | rest], _, _) do
     test = add_expr(test, expr_acc, expected_acc)
-    Enum.reverse([test | rest])
+    :lists.reverse(rest, [test])
+  end
+
+  # Encountered a test finnishing on a result_comment or a print_comment, therefore store test and finish
+  defp extract_tests([{"#=> " <> _ = line, _} | [{"", _} | lines]], expr_acc, "", [test | rest], _new_test?, module) do
+    test = add_expr(test, expr_acc, line)
+    extract_tests(lines, "", "", [test | rest], true, module)
+  end
+  defp extract_tests([{"#>> " <> _ = line, _} | [{"", _} | lines]], expr_acc, "", [test | rest], _new_test?, module) do
+    test = add_expr(test, expr_acc, line)
+    extract_tests(lines, "", "", [test | rest], true, module)
   end
 
   # We've encountered the next test on an adjacent line. Put them into one group.
-  defp extract_tests([{"iex>" <> _, _} | _] = list, expr_acc, expected_acc, [test | rest], new_test, module)
+  defp extract_tests([{"iex>" <> _, _} | _] = list, expr_acc, expected_acc, [test | rest], new_test?, module)
        when expr_acc != "" and expected_acc != "" do
     test = add_expr(test, expr_acc, expected_acc)
-    extract_tests(list, "", "", [test | rest], new_test, module)
+    extract_tests(list, "", "", [test | rest], new_test?, module)
+  end
+
+  # We've encountered a comment on an adjacent line. Put them into one group.
+  defp extract_tests([{"# " <> _, _} | lines], expr_acc, expected_acc, acc, new_test?, module) do
+    extract_tests(lines, expr_acc, expected_acc, acc, new_test?, module)
+  end
+  defp extract_tests([{"#=> " <> _, _} | lines], expr_acc, expected_acc, acc, new_test?, module) do
+    extract_tests(lines, expr_acc, expected_acc, acc, new_test?, module)
+  end
+  defp extract_tests([{"#>> " <> _, _} | lines], expr_acc, expected_acc, acc, new_test?, module) do
+    extract_tests(lines, expr_acc, expected_acc, acc, new_test?, module)
   end
 
   # Store expr_acc and start a new test case.
@@ -546,28 +592,28 @@ defmodule ExUnit.DocTest do
   end
 
   # Still gathering expr_acc. Synonym for the next clause.
-  defp extract_tests([{"iex>" <> string, _} | lines], expr_acc, expected_acc, acc, new_test, module) do
-    extract_tests(lines, expr_acc <> "\n" <> string, expected_acc, acc, new_test, module)
+  defp extract_tests([{"iex>" <> string, _} | lines], expr_acc, expected_acc, acc, new_test?, module) do
+    extract_tests(lines, expr_acc <> "\n" <> string, expected_acc, acc, new_test?, module)
   end
 
   # Still gathering expr_acc. Synonym for the previous clause.
-  defp extract_tests([{"...>" <> string, _} | lines], expr_acc, expected_acc, acc, new_test, module)
+  defp extract_tests([{"...>" <> string, _} | lines], expr_acc, expected_acc, acc, new_test?, module)
        when expr_acc != "" do
-    extract_tests(lines, expr_acc <> "\n" <> string, expected_acc, acc, new_test, module)
+    extract_tests(lines, expr_acc <> "\n" <> string, expected_acc, acc, new_test?, module)
   end
 
   # Expression numbers are simply skipped.
   defp extract_tests([{<<"iex(", _>> <> string = line, line_no} | lines],
-                     expr_acc, expected_acc, acc, new_test, module) do
+                     expr_acc, expected_acc, acc, new_test?, module) do
     extract_tests([{"iex" <> skip_iex_number(string, module, line_no, line), line_no} | lines],
-                     expr_acc, expected_acc, acc, new_test, module)
+                     expr_acc, expected_acc, acc, new_test?, module)
   end
 
   # Expression numbers are simply skipped redux.
   defp extract_tests([{<<"...(", _>> <> string, line_no} = line | lines],
-                     expr_acc, expected_acc, acc, new_test, module) do
+                     expr_acc, expected_acc, acc, new_test?, module) do
     extract_tests([{"..." <> skip_iex_number(string, module, line_no, line), line_no} | lines],
-                  expr_acc, expected_acc, acc, new_test, module)
+                  expr_acc, expected_acc, acc, new_test?, module)
   end
 
   # Skip empty or documentation line.
@@ -577,25 +623,25 @@ defmodule ExUnit.DocTest do
 
   # Encountered end of fenced code block, store pending test
   defp extract_tests([{<<fence::3-bytes>> <> _, _} | lines], expr_acc, expected_acc,
-                     [test | rest], _new_test, module)
+                     [test | rest], _new_test?, module)
        when fence in @fences and expr_acc != "" do
     test = add_expr(test, expr_acc, expected_acc)
     extract_tests(lines, "", "", [test | rest], true, module)
   end
 
   # Encountered an empty line, store pending test
-  defp extract_tests([{"", _} | lines], expr_acc, expected_acc, [test | rest], _new_test, module) do
+  defp extract_tests([{"", _} | lines], expr_acc, expected_acc, [test | rest], _new_test?, module) do
     test = add_expr(test, expr_acc, expected_acc)
     extract_tests(lines, "", "", [test | rest], true, module)
   end
 
-  # Finally, parse expected_acc.
-  defp extract_tests([{expected, _} | lines], expr_acc, "", acc, new_test, module) do
-    extract_tests(lines, expr_acc, expected, acc, new_test, module)
+  # Finally, parse expected_acc
+  defp extract_tests([{expected, _} | lines], expr_acc, "", acc, new_test?, module) do
+    extract_tests(lines, expr_acc, expected, acc, new_test?, module)
   end
 
-  defp extract_tests([{expected, _} | lines], expr_acc, expected_acc, acc, new_test, module) do
-    extract_tests(lines, expr_acc, expected_acc <> "\n" <> expected, acc, new_test, module)
+  defp extract_tests([{expected, _} | lines], expr_acc, expected_acc, acc, new_test?, module) do
+    extract_tests(lines, expr_acc, expected_acc <> "\n" <> expected, acc, new_test?, module)
   end
 
   defp skip_iex_number(")>" <> string, _module, _line_no, _line) do
@@ -625,6 +671,13 @@ defmodule ExUnit.DocTest do
       "** (" <> error ->
         [mod, message] = :binary.split(error, ")")
         {:error, Module.concat([mod]), String.trim_leading(message)}
+
+      "#=> " <> _ ->
+        {:result_comment, string}
+
+      "#>> " <> _ ->
+        {:print_comment, string}
+
       _ ->
         if is_inspected?(string) do
           {:inspect, inspect(string)}
