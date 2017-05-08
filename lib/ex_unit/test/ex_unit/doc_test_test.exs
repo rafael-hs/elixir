@@ -2,6 +2,65 @@ Code.require_file "../test_helper.exs", __DIR__
 
 import ExUnit.TestHelpers
 
+defmodule ExUnit.DocTestTest.Comments do
+  # REGULAR COMMENTS
+  @doc """
+  # Regular comment
+  iex> x = one()
+  # Regular comment
+  ...> x + 1
+  2
+  # Regular comments at the end if allowed if previously a returned value was given
+
+  iex> 1 + 1
+  # Regular comment
+  2
+
+  # RESULT COMMENTS
+  iex> pid = spawn(fn -> nil end)
+  #=> #PID<0.94.0>
+  iex> is_pid(pid)
+  true
+
+  iex> self()
+  #=> #PID<0.12.0>
+
+  iex> spawn(fn -> nil end)
+  #=> #PID<0.94.0>
+  # ok
+
+  # PRINT COMMENTS
+  iex> IO.puts "Elixir"
+  #>> "Elixir"
+  :ok
+
+  iex> IO.puts "Elixir"
+  #>> "Elixir"
+
+  iex> IO.puts "Elixir"
+  #>> "Elixir"
+  # ok
+ """
+  def one(), do: 1
+end |> write_beam
+
+defmodule ExUnit.DocTestTest.InvalidComment1 do
+  @doc """
+  iex> 1 + 2000
+  # This is wrong, as we need to define a specify a return value
+  """
+  def terminates_in_comment, do: :wrong
+end |> write_beam
+
+defmodule ExUnit.DocTestTest.InvalidComment2 do
+  @doc """
+  iex> x = 1
+  ...> x + 2001
+  # This is wrong, as we need to define a specify a return value
+  """
+  def terminates_in_comment, do: :wrong
+end |> write_beam
+
 defmodule ExUnit.DocTestTest.GoodModule do
   @doc """
   iex> one()
@@ -72,28 +131,10 @@ defmodule ExUnit.DocTestTest.MultipleExceptions do
   def two_exceptions, do: :ok
 end |> write_beam
 
-defmodule ExUnit.DocTestTest.SomewhatGoodModuleWithOnly do
-  @doc """
-  iex> one()
-  1
-  iex> one() + 1
-  2
-  """
-  def one, do: 1
-
-  @doc """
-  iex> two()
-  2
-  iex> two() + 1
-  100
-  """
-  def two, do: 2
-end |> write_beam
-
-defmodule ExUnit.DocTestTest.SomewhatGoodModuleWithExcept do
+defmodule ExUnit.DocTestTest.SomewhatGoodModule do
   @moduledoc """
   iex> 1 + 1
-  1
+  100
   """
 
   @doc """
@@ -122,6 +163,32 @@ defmodule ExUnit.DocTestTest.NoImport do
   2
   """
   def max(a, b), do: {:ok, Kernel.max(a, b)}
+end |> write_beam
+
+defmodule ExUnit.DocTestTest.Import do
+  @doc """
+  iex> one()
+  1
+  """
+  def one(), do: 1
+
+  @doc """
+  iex> two()
+  2
+  """
+  def two(), do: 2
+
+  @doc """
+  iex> ExUnit.DocTestTest.Import.three()
+  3
+  """
+  def three(), do: 3
+
+  @doc """
+  iex> ExUnit.DocTestTest.Import.four()
+  4
+  """
+  def four(), do: 4
 end |> write_beam
 
 defmodule ExUnit.DocTestTest.Invalid do
@@ -357,31 +424,44 @@ end |> write_beam
 
 defmodule ExUnit.DocTestTest do
   use ExUnit.Case
+  require ExUnit.TestHelpers.DocTestIsolated, as: DocTestIsolated
 
   # This is intentional. The doctests in DocTest's docs
   # fail for demonstration purposes.
   # doctest ExUnit.DocTest
 
-  doctest ExUnit.DocTestTest.GoodModule, import: true
-  doctest ExUnit.DocTestTest.SomewhatGoodModuleWithOnly, only: [one: 0], import: true
-  doctest ExUnit.DocTestTest.SomewhatGoodModuleWithExcept, except: [:moduledoc, two: 0], import: true
-  doctest ExUnit.DocTestTest.NoImport
-  doctest ExUnit.DocTestTest.IndentationHeredocs
-  doctest ExUnit.DocTestTest.FencedHeredocs
-  doctest ExUnit.DocTestTest.Haiku
+  DocTestIsolated.isolate(async: true) do
+    doctest ExUnit.DocTestTest.Comments, import: true
+
+    doctest ExUnit.DocTestTest.GoodModule, import: true
+    doctest ExUnit.DocTestTest.GoodModule, import: []
+
+    doctest ExUnit.DocTestTest.NoImport
+    doctest ExUnit.DocTestTest.NoImport, import: false # explicit
+    doctest ExUnit.DocTestTest.Import, import: [only: [one: 0, two: 0]]
+    doctest ExUnit.DocTestTest.Import, import: [except: [three: 0, four: 0]]
+
+    doctest ExUnit.DocTestTest.SomewhatGoodModule, only: [one: 0], import: true
+    doctest ExUnit.DocTestTest.SomewhatGoodModule, except: [:moduledoc, two: 0], import: true
+
+    doctest ExUnit.DocTestTest.IndentationHeredocs
+    doctest ExUnit.DocTestTest.FencedHeredocs
+    doctest ExUnit.DocTestTest.Haiku
+  end
 
   import ExUnit.CaptureIO
+
 
   test "multiple functions filtered with :only" do
     defmodule MultipleOnly do
       use ExUnit.Case
-      doctest ExUnit.DocTestTest.SomewhatGoodModuleWithOnly, only: [one: 0, two: 0], import: true
+      doctest ExUnit.DocTestTest.SomewhatGoodModule, only: [one: 0, two: 0], import: true
     end
 
     ExUnit.Server.cases_loaded()
     assert capture_io(fn -> ExUnit.run end) =~ "2 tests, 1 failure"
   end
-
+  @tag :skip;
   test "doctest failures" do
     # When adding or removing lines above this line, the tests below will
     # fail because we are explicitly asserting some doctest lines from
@@ -400,56 +480,57 @@ defmodule ExUnit.DocTestTest do
 
     assert output =~ """
       1) test moduledoc at ExUnit.DocTestTest.Invalid (1) (ExUnit.DocTestTest.ActuallyCompiled)
-         test/ex_unit/doc_test_test.exs:391
-         Doctest did not compile, got: (SyntaxError) test/ex_unit/doc_test_test.exs:130: syntax error before: '*'
+         test/ex_unit/doc_test_test.exs:447
+         Doctest did not compile, got: (SyntaxError) test/ex_unit/doc_test_test.exs:166: syntax error before: '*'
          code: 1 + * 1
          stacktrace:
-           test/ex_unit/doc_test_test.exs:130: ExUnit.DocTestTest.Invalid (module)
+           test/ex_unit/doc_test_test.exs:166: ExUnit.DocTestTest.Invalid (module)
     """
 
     assert output =~ """
       2) test moduledoc at ExUnit.DocTestTest.Invalid (2) (ExUnit.DocTestTest.ActuallyCompiled)
-         test/ex_unit/doc_test_test.exs:391
+         test/ex_unit/doc_test_test.exs:447
          Doctest failed
          code: 1 + hd(List.flatten([1])) === 3
          left: 2
          stacktrace:
-           test/ex_unit/doc_test_test.exs:133: ExUnit.DocTestTest.Invalid (module)
+           test/ex_unit/doc_test_test.exs:169: ExUnit.DocTestTest.Invalid (module)
     """
 
     assert output =~ """
       3) test moduledoc at ExUnit.DocTestTest.Invalid (3) (ExUnit.DocTestTest.ActuallyCompiled)
-         test/ex_unit/doc_test_test.exs:391
+         test/ex_unit/doc_test_test.exs:447
          Doctest failed
          code: inspect(:oops) === "#MapSet<[]>"
          left: ":oops"
          stacktrace:
-           test/ex_unit/doc_test_test.exs:136: ExUnit.DocTestTest.Invalid (module)
+           test/ex_unit/doc_test_test.exs:172: ExUnit.DocTestTest.Invalid (module)
     """
 
     # The stacktrace points to the cause of the error
     assert output =~ """
       4) test moduledoc at ExUnit.DocTestTest.Invalid (4) (ExUnit.DocTestTest.ActuallyCompiled)
-         test/ex_unit/doc_test_test.exs:391
+         test/ex_unit/doc_test_test.exs:447
          Doctest failed: got UndefinedFunctionError with message "function Hello.world/0 is undefined (module Hello is not available)"
          code: Hello.world
          stacktrace:
            Hello.world()
-           (for doctest at) test/ex_unit/doc_test_test.exs:139: (test)
+           (for doctest at) test/ex_unit/doc_test_test.exs:175: (test)
     """
 
     assert output =~ """
       5) test moduledoc at ExUnit.DocTestTest.Invalid (5) (ExUnit.DocTestTest.ActuallyCompiled)
-         test/ex_unit/doc_test_test.exs:391
+         test/ex_unit/doc_test_test.exs:447
          Doctest failed: expected exception WhatIsThis but got RuntimeError with message "oops"
          code: raise "oops"
          stacktrace:
-           test/ex_unit/doc_test_test.exs:142: ExUnit.DocTestTest.Invalid (module)
+           test/ex_unit/doc_test_test.exs:178: ExUnit.DocTestTest.Invalid (module)
+
     """
 
     assert output =~ """
       6) test moduledoc at ExUnit.DocTestTest.Invalid (6) (ExUnit.DocTestTest.ActuallyCompiled)
-         test/ex_unit/doc_test_test.exs:391
+         test/ex_unit/doc_test_test.exs:447
          Doctest failed: wrong message for RuntimeError
          expected:
            "hello"
@@ -457,55 +538,55 @@ defmodule ExUnit.DocTestTest do
            "oops"
          code: raise "oops"
          stacktrace:
-           test/ex_unit/doc_test_test.exs:145: ExUnit.DocTestTest.Invalid (module)
+           test/ex_unit/doc_test_test.exs:181: ExUnit.DocTestTest.Invalid (module)
     """
 
     assert output =~ """
       7) test doc at ExUnit.DocTestTest.Invalid.a/0 (7) (ExUnit.DocTestTest.ActuallyCompiled)
-         test/ex_unit/doc_test_test.exs:391
-         Doctest did not compile, got: (SyntaxError) test/ex_unit/doc_test_test.exs:151: syntax error before: '*'
+         test/ex_unit/doc_test_test.exs:447
+         Doctest did not compile, got: (SyntaxError) test/ex_unit/doc_test_test.exs:187: syntax error before: '*'
          code: 1 + * 1
          stacktrace:
-           test/ex_unit/doc_test_test.exs:151: ExUnit.DocTestTest.Invalid (module)
+           test/ex_unit/doc_test_test.exs:187: ExUnit.DocTestTest.Invalid (module)
     """
 
     assert output =~ """
       8) test doc at ExUnit.DocTestTest.Invalid.b/0 (8) (ExUnit.DocTestTest.ActuallyCompiled)
-         test/ex_unit/doc_test_test.exs:391
-         Doctest did not compile, got: (SyntaxError) test/ex_unit/doc_test_test.exs:157: syntax error before: '*'
+         test/ex_unit/doc_test_test.exs:447
+         Doctest did not compile, got: (SyntaxError) test/ex_unit/doc_test_test.exs:193: syntax error before: '*'
          code: 1 + * 1
          stacktrace:
-           test/ex_unit/doc_test_test.exs:157: ExUnit.DocTestTest.Invalid (module)
+           test/ex_unit/doc_test_test.exs:193: ExUnit.DocTestTest.Invalid (module)
     """
 
     assert output =~ """
       9) test doc at ExUnit.DocTestTest.Invalid.dedented_past_fence/0 (9) (ExUnit.DocTestTest.ActuallyCompiled)
-         test/ex_unit/doc_test_test.exs:391
-         Doctest did not compile, got: (SyntaxError) test/ex_unit/doc_test_test.exs:181: unexpected token: "`" (column 5, codepoint U+0060)
+         test/ex_unit/doc_test_test.exs:447
+         Doctest did not compile, got: (SyntaxError) test/ex_unit/doc_test_test.exs:217: unexpected token: "`" (column 5, codepoint U+0060)
          code: 3
                    ```
          stacktrace:
-           test/ex_unit/doc_test_test.exs:180: ExUnit.DocTestTest.Invalid (module)
+           test/ex_unit/doc_test_test.exs:216: ExUnit.DocTestTest.Invalid (module)
     """
 
     assert output =~ """
      10) test doc at ExUnit.DocTestTest.Invalid.indented_not_enough/0 (10) (ExUnit.DocTestTest.ActuallyCompiled)
-         test/ex_unit/doc_test_test.exs:391
-         Doctest did not compile, got: (SyntaxError) test/ex_unit/doc_test_test.exs:165: unexpected token: "`" (column 1, codepoint U+0060)
+         test/ex_unit/doc_test_test.exs:447
+         Doctest did not compile, got: (SyntaxError) test/ex_unit/doc_test_test.exs:201: unexpected token: "`" (column 1, codepoint U+0060)
          code: 3
                `
          stacktrace:
-           test/ex_unit/doc_test_test.exs:164: ExUnit.DocTestTest.Invalid (module)
+           test/ex_unit/doc_test_test.exs:200: ExUnit.DocTestTest.Invalid (module)
     """
 
     assert output =~ """
      11) test doc at ExUnit.DocTestTest.Invalid.indented_too_much/0 (11) (ExUnit.DocTestTest.ActuallyCompiled)
-         test/ex_unit/doc_test_test.exs:391
-         Doctest did not compile, got: (SyntaxError) test/ex_unit/doc_test_test.exs:173: unexpected token: "`" (column 3, codepoint U+0060)
+         test/ex_unit/doc_test_test.exs:447
+         Doctest did not compile, got: (SyntaxError) test/ex_unit/doc_test_test.exs:209: unexpected token: "`" (column 3, codepoint U+0060)
          code: 3
                  ```
          stacktrace:
-           test/ex_unit/doc_test_test.exs:172: ExUnit.DocTestTest.Invalid (module)
+           test/ex_unit/doc_test_test.exs:208: ExUnit.DocTestTest.Invalid (module)
     """
   end
 
@@ -534,7 +615,7 @@ defmodule ExUnit.DocTestTest do
   end
 
   test "tags tests as doctests" do
-    defmodule DoctestTag do
+    defmodule DocTestTag do
       use ExUnit.Case
       doctest ExUnit.DocTestTest.NoImport
 
@@ -609,6 +690,22 @@ defmodule ExUnit.DocTestTest do
         doctest ExUnit.DocTestTest.Incomplete
       end
     end
+
+    assert_raise ExUnit.DocTest.Error,
+      ~r[test/ex_unit/doc_test_test\.exs:\d+: expected non-blank line to follow iex> prompt], fn ->
+      defmodule NeverCompiled do
+        import ExUnit.DocTest
+        doctest ExUnit.DocTestTest.InvalidComment1
+      end
+    end
+
+    assert_raise ExUnit.DocTest.Error,
+      ~r[test/ex_unit/doc_test_test\.exs:\d+: expected non-blank line to follow iex> prompt], fn ->
+      defmodule NeverCompiled do
+        import ExUnit.DocTest
+        doctest ExUnit.DocTestTest.InvalidComment2
+      end
+    end
   end
 
   test "fails on invalid use" do
@@ -616,6 +713,15 @@ defmodule ExUnit.DocTestTest do
       defmodule FunctionClashFail do
         import ExUnit.DocTest
         doctest ExUnit.DocTestTest.Invalid
+      end
+    end
+  end
+
+  test "fails on invalid import options" do
+    assert_raise ArgumentError, ~r"import options must be a boolean or a keyword list, got: \"invalid options\"", fn ->
+      defmodule NeverCompiled do
+        import ExUnit.DocTest
+        doctest ExUnit.DocTestTest, import: "invalid options"
       end
     end
   end
