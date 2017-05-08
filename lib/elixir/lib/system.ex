@@ -539,8 +539,9 @@ defmodule System do
       {"hello\n", 0}
 
       iex> System.cmd "echo", ["hello"], into: IO.stream(:stdio, :line)
-      hello
-      {%IO.Stream{}, 0}
+      #>> hello
+      {%IO.Stream{device: :standard_io, line_or_bytes: :line, raw: false}, 0}
+
 
   ## Options
 
