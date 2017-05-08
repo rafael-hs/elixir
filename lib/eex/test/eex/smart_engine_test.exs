@@ -4,6 +4,8 @@ defmodule EEx.SmartEngineTest do
   # TODO: Make this async: true once capture_io is removed
   use ExUnit.Case
 
+  doctest EEx.SmartEngine
+
   test "evaluates simple string" do
     assert_eval "foo bar", "foo bar"
   end
