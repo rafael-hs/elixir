@@ -4,7 +4,7 @@ defmodule ExUnit.RunnerStats do
   use GenServer
   alias ExUnit.{FailuresManifest, Test, TestModule}
 
-  def stats(sup) do
+  def stats(sup) when is_pid(sup) do
     GenServer.call(sup, :stats, :infinity)
   end
 
