@@ -133,7 +133,7 @@ defmodule Mix.CLI do
   end
 
   defp display_version do
-    IO.puts(:erlang.system_info(:system_version))
+    IO.puts(System.otp_info()[:setup] <> "\n")
     IO.puts("Mix " <> System.build_info()[:build])
   end
 

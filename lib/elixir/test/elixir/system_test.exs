@@ -23,6 +23,20 @@ defmodule SystemTest do
     assert build_info[:build] =~ "compiled with Erlang/OTP"
   end
 
+  test "otp_info/0" do
+    otp_info = System.otp_info()
+    assert is_map(otp_info)
+    assert is_binary(otp_info[:erts_version])
+    assert is_binary(otp_info[:release])
+    assert is_integer(otp_info[:schedulers]) and otp_info[:schedulers] > 0
+    assert is_integer(otp_info[:schedulers_online]) and otp_info[:schedulers_online] > 0
+    assert is_binary(otp_info[:setup])
+    assert otp_info[:setup] == String.trim(otp_info[:setup])
+    assert is_binary(otp_info[:system_architecture])
+
+    assert otp_info[:setup] =~ ~R(Erlang/OTP \d{2})
+  end
+
   test "user_home/0" do
     assert is_binary(System.user_home())
     assert is_binary(System.user_home!())

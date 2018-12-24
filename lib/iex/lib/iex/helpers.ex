@@ -541,12 +541,13 @@ defmodule IEx.Helpers do
   defp print_runtime_info_topic(:system) do
     print_pane("System and architecture")
 
+    otp_info = System.otp_info()
     print_entry("Elixir version", System.version())
-    print_entry("Erlang/OTP version", :erlang.system_info(:otp_release))
-    print_entry("ERTS version", :erlang.system_info(:version))
-    print_entry("Compiled for", :erlang.system_info(:system_architecture))
-    print_entry("Schedulers", :erlang.system_info(:schedulers))
-    print_entry("Schedulers online", :erlang.system_info(:schedulers_online))
+    print_entry("Erlang/OTP version", System.otp_release())
+    print_entry("ERTS version", otp_info[:erts_version])
+    print_entry("Compiled for", otp_info[:system_architecture])
+    print_entry("Schedulers", otp_info[:schedulers])
+    print_entry("Schedulers online", otp_info[:schedulers_online])
   end
 
   defp print_runtime_info_topic(:memory) do

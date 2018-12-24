@@ -180,6 +180,8 @@ defmodule System do
   Instead one should use specialized functions, such as `version/0` to retrieve
   the Elixir version and `otp_release/0` to retrieve the Erlang/OTP release.
 
+  For information about the Erlang/OTP system, see `System.otp_info/0`.
+
   ## Examples
 
       iex> System.build_info()
@@ -839,6 +841,37 @@ defmodule System do
   @spec os_time(time_unit) :: integer
   def os_time(unit) do
     :os.system_time(normalize_time_unit(unit))
+  end
+
+  @doc """
+  Returns a map containing the Erlang/OTP information of the system, such as
+  OTP release number, ERTS version, architecture, and schedulers.
+
+  For information about the Elixir build, see `System.build_info/0`.
+
+  ## Examples:
+
+      System.otp_info
+      #=> %{
+        erts_version: "10.0.5",
+        release: "21",
+        schedulers: 4,
+        schedulers_online: 4,
+        setup: "Erlang/OTP 21 [erts-10.0.5] [source] [smp:4:4] [ds:4:4:10] [async-threads:1] [hipe]",
+        system_architecture: "i686-pc-linux-gnu"
+      }
+
+  """
+  @spec otp_info() :: %{required(atom) => String.t() | pos_integer()}
+  def otp_info() do
+    %{
+      erts_version: :erlang.system_info(:version) |> List.to_string(),
+      release: otp_release(),
+      schedulers: schedulers(),
+      schedulers_online: schedulers_online(),
+      setup: :erlang.system_info(:system_version) |> List.to_string() |> String.trim_trailing(),
+      system_architecture: :erlang.system_info(:system_architecture) |> List.to_string()
+    }
   end
 
   @doc """
