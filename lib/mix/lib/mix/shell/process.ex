@@ -41,7 +41,7 @@ defmodule Mix.Shell.Process do
       flush &IO.inspect(&1)
 
   """
-  def flush(callback \\ fn x -> x end) do
+  def flush(callback \\ fn message -> message end) do
     receive do
       {:mix_shell, _, _} = message ->
         callback.(message)

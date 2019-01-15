@@ -216,7 +216,7 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> apply(fn x -> x * 2 end, [2])
+      iex> apply(fn element -> element * 2 end, [2])
       4
 
   """
@@ -564,9 +564,9 @@ defmodule Kernel do
 
   ## Examples
 
-      iex> is_function(fn x -> x * 2 end, 1)
+      iex> is_function(fn element -> element * 2 end, 1)
       true
-      iex> is_function(fn x -> x * 2 end, 2)
+      iex> is_function(fn element -> element * 2 end, 2)
       false
 
   """
@@ -3247,7 +3247,7 @@ defmodule Kernel do
   The `|>` operator is mostly useful when there is a desire to execute a series
   of operations resembling a pipeline:
 
-      iex> [1, [2], 3] |> List.flatten() |> Enum.map(fn x -> x * 2 end)
+      iex> [1, [2], 3] |> List.flatten() |> Enum.map(fn element -> element * 2 end)
       [2, 4, 6]
 
   In the example above, the list `[1, [2], 3]` is passed as the first argument
@@ -3257,7 +3257,7 @@ defmodule Kernel do
 
   In other words, the expression above simply translates to:
 
-      Enum.map(List.flatten([1, [2], 3]), fn x -> x * 2 end)
+      Enum.map(List.flatten([1, [2], 3]), fn element -> element * 2 end)
 
   ## Pitfalls
 
@@ -3292,7 +3292,7 @@ defmodule Kernel do
 
   Given the anonymous function:
 
-      fun = fn x -> IO.puts(x) end
+      fun = fn element -> IO.puts(element) end
       fun.("Hello")
 
   This won't work as it will rather try to invoke the local

@@ -282,9 +282,9 @@ defmodule Macro do
   end
 
   defp do_traverse_args(args, acc, pre, post) when is_list(args) do
-    Enum.map_reduce(args, acc, fn x, acc ->
-      {x, acc} = pre.(x, acc)
-      do_traverse(x, acc, pre, post)
+    Enum.map_reduce(args, acc, fn element, acc ->
+      {element, acc} = pre.(element, acc)
+      do_traverse(element, acc, pre, post)
     end)
   end
 
@@ -1021,9 +1021,9 @@ defmodule Macro do
   end
 
   defp kw_blocks_to_string(kw, fun) do
-    Enum.reduce(unquote(kw_keywords), " ", fn x, acc ->
-      case Keyword.has_key?(kw, x) do
-        true -> acc <> kw_block_to_string(x, Keyword.get(kw, x), fun)
+    Enum.reduce(unquote(kw_keywords), " ", fn element, acc ->
+      case Keyword.has_key?(kw, element) do
+        true -> acc <> kw_block_to_string(element, Keyword.get(kw, element), fun)
         false -> acc
       end
     end) <> "end"

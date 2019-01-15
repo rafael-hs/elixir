@@ -147,7 +147,7 @@ defmodule Task.Supervised do
   ## Stream
 
   def stream(enumerable, acc, reducer, mfa, options, spawn) do
-    next = &Enumerable.reduce(enumerable, &1, fn x, acc -> {:suspend, [x | acc]} end)
+    next = &Enumerable.reduce(enumerable, &1, fn element, acc -> {:suspend, [element | acc]} end)
     max_concurrency = Keyword.get(options, :max_concurrency, System.schedulers_online())
     ordered? = Keyword.get(options, :ordered, true)
     timeout = Keyword.get(options, :timeout, 5000)

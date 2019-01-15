@@ -189,7 +189,7 @@ defmodule Map do
 
   ## Examples
 
-      iex> Map.new([:a, :b], fn x -> {x, x} end)
+      iex> Map.new([:a, :b], fn element -> {element, element} end)
       %{a: :a, b: :b}
 
   """

@@ -86,7 +86,7 @@ defmodule MapSet do
 
   ## Examples
 
-      iex> MapSet.new([1, 2, 1], fn x -> 2 * x end)
+      iex> MapSet.new([1, 2, 1], fn element -> 2 * element end)
       #MapSet<[2, 4]>
 
   """

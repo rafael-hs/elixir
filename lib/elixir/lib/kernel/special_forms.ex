@@ -1431,7 +1431,7 @@ defmodule Kernel.SpecialForms do
   for example:
 
       iex> letters = for <<x <- "AbCabCABc">>, x in ?a..?z, do: <<x>>
-      iex> Enum.reduce(letters, %{}, fn x, acc -> Map.update(acc, x, 1, & &1 + 1) end)
+      iex> Enum.reduce(letters, %{}, fn letter, acc -> Map.update(acc, letter, 1, & &1 + 1) end)
       %{"a" => 1, "b" => 2, "c" => 1}
 
   While the above is straight-forward, it has the downside of traversing the
@@ -1441,8 +1441,8 @@ defmodule Kernel.SpecialForms do
   Luckily, comprehensions also support the `:reduce` option, which would allow
   us to fuse both steps above into a single step:
 
-      iex> for <<x <- "AbCabCABc">>, x in ?a..?z, reduce: %{} do
-      ...>   acc -> Map.update(acc, <<x>>, 1, & &1 + 1)
+      iex> for <<letter <- "AbCabCABc">>, letter in ?a..?z, reduce: %{} do
+      ...>   acc -> Map.update(acc, <<letter>>, 1, & &1 + 1)
       ...> end
       %{"a" => 1, "b" => 2, "c" => 1}
 
@@ -1611,7 +1611,7 @@ defmodule Kernel.SpecialForms do
       iex> double.(2)
       4
 
-  In other words, `&(&1 * 2)` is equivalent to `fn x -> x * 2 end`.
+  In other words, `&(&1 * 2)` is equivalent to `fn number -> number * 2 end`.
 
   We can partially apply a remote function with placeholder:
 

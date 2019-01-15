@@ -177,10 +177,10 @@ defmodule List do
 
   ## Examples
 
-      iex> List.foldl([5, 5], 10, fn x, acc -> x + acc end)
+      iex> List.foldl([5, 5], 10, fn element, acc -> element + acc end)
       20
 
-      iex> List.foldl([1, 2, 3, 4], 0, fn x, acc -> x - acc end)
+      iex> List.foldl([1, 2, 3, 4], 0, fn element, acc -> element - acc end)
       2
 
   """
@@ -195,7 +195,7 @@ defmodule List do
 
   ## Examples
 
-      iex> List.foldr([1, 2, 3, 4], 0, fn x, acc -> x - acc end)
+      iex> List.foldr([1, 2, 3, 4], 0, fn element, acc -> element - acc end)
       -2
 
   """
@@ -1179,7 +1179,7 @@ defmodule List do
   # zip
 
   defp do_zip(list, acc) do
-    converter = fn x, acc -> do_zip_each(to_list(x), acc) end
+    converter = fn element, acc -> do_zip_each(to_list(element), acc) end
 
     case :lists.mapfoldl(converter, [], list) do
       {_, nil} ->

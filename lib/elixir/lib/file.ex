@@ -904,8 +904,8 @@ defmodule File do
           {:ok, files} ->
             case mkdir(dest) do
               success when success in [:ok, {:error, :eexist}] ->
-                Enum.reduce(files, [dest | acc], fn x, acc ->
-                  do_cp_r(Path.join(src, x), Path.join(dest, x), callback, acc)
+                Enum.reduce(files, [dest | acc], fn element, acc ->
+                  do_cp_r(Path.join(src, element), Path.join(dest, element), callback, acc)
                 end)
 
               {:error, reason} ->

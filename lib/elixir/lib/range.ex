@@ -27,7 +27,7 @@ defmodule Range do
 
       iex> range = 1..10
       1..10
-      iex> Enum.reduce(range, 0, fn i, acc -> i * i + acc end)
+      iex> Enum.reduce(range, 0, fn integer, acc -> integer * integer + acc end)
       385
       iex> Enum.count(range)
       10

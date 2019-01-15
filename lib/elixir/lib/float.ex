@@ -368,13 +368,13 @@ defmodule Float do
 
   defp rounding(_, _, _, div), do: div
 
-  Enum.reduce(0..104, 1, fn x, acc ->
-    defp power_of_10(unquote(x)), do: unquote(acc)
+  Enum.reduce(0..104, 1, fn integer, acc ->
+    defp power_of_10(unquote(integer)), do: unquote(acc)
     acc * 10
   end)
 
-  Enum.reduce(0..104, 1, fn x, acc ->
-    defp power_of_5(unquote(x)), do: unquote(acc)
+  Enum.reduce(0..104, 1, fn integer, acc ->
+    defp power_of_5(unquote(integer)), do: unquote(acc)
     acc * 5
   end)
 

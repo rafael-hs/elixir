@@ -293,7 +293,7 @@ defmodule Stream do
   """
   @spec dedup(Enumerable.t()) :: Enumerable.t()
   def dedup(enum) do
-    dedup_by(enum, fn x -> x end)
+    dedup_by(enum, fn element -> element end)
   end
 
   @doc """
@@ -415,22 +415,22 @@ defmodule Stream do
 
   ## Examples
 
-      iex> stream = Stream.each([1, 2, 3], fn x -> send(self(), x) end)
+      iex> stream = Stream.each([1, 2, 3], fn element -> send(self(), element) end)
       iex> Enum.to_list(stream)
-      iex> receive do: (x when is_integer(x) -> x)
+      iex> receive do: (element when is_integer(element) -> element)
       1
-      iex> receive do: (x when is_integer(x) -> x)
+      iex> receive do: (element when is_integer(element) -> element)
       2
-      iex> receive do: (x when is_integer(x) -> x)
+      iex> receive do: (element when is_integer(element) -> element)
       3
 
   """
   @spec each(Enumerable.t(), (element -> term)) :: Enumerable.t()
   def each(enum, fun) do
     lazy(enum, fn f1 ->
-      fn x, acc ->
-        fun.(x)
-        f1.(x, acc)
+      fn element, acc ->
+        fun.(element)
+        f1.(element, acc)
       end
     end)
   end
@@ -443,11 +443,11 @@ defmodule Stream do
 
   ## Examples
 
-      iex> stream = Stream.flat_map([1, 2, 3], fn x -> [x, x * 2] end)
+      iex> stream = Stream.flat_map([1, 2, 3], fn element -> [element, element * 2] end)
       iex> Enum.to_list(stream)
       [1, 2, 2, 4, 3, 6]
 
-      iex> stream = Stream.flat_map([1, 2, 3], fn x -> [[x]] end)
+      iex> stream = Stream.flat_map([1, 2, 3], fn element -> [[element]] end)
       iex> Enum.to_list(stream)
       [[1], [2], [3]]
 
@@ -463,7 +463,7 @@ defmodule Stream do
 
   ## Examples
 
-      iex> stream = Stream.filter([1, 2, 3], fn x -> rem(x, 2) == 0 end)
+      iex> stream = Stream.filter([1, 2, 3], fn element -> rem(element, 2) == 0 end)
       iex> Enum.to_list(stream)
       [2]
 
@@ -512,16 +512,16 @@ defmodule Stream do
   is delayed until the stream is executed. See `run/1` for an example.
   """
   @spec into(Enumerable.t(), Collectable.t(), (term -> term)) :: Enumerable.t()
-  def into(enum, collectable, transform \\ fn x -> x end) do
+  def into(enum, collectable, transform \\ fn element -> element end) do
     &do_into(enum, collectable, transform, &1, &2)
   end
 
   defp do_into(enum, collectable, transform, acc, fun) do
     {initial, into} = Collectable.into(collectable)
 
-    composed = fn x, [acc | collectable] ->
-      collectable = into.(collectable, {:cont, transform.(x)})
-      {reason, acc} = fun.(x, acc)
+    composed = fn element, [acc | collectable] ->
+      collectable = into.(collectable, {:cont, transform.(element)})
+      {reason, acc} = fun.(element, acc)
       {reason, [acc | collectable]}
     end
 
@@ -551,7 +551,7 @@ defmodule Stream do
 
   ## Examples
 
-      iex> stream = Stream.map([1, 2, 3], fn x -> x * 2 end)
+      iex> stream = Stream.map([1, 2, 3], fn element -> element * 2 end)
       iex> Enum.to_list(stream)
       [2, 4, 6]
 
@@ -571,15 +571,15 @@ defmodule Stream do
 
   ## Examples
 
-      iex> stream = Stream.map_every(1..10, 2, fn x -> x * 2 end)
+      iex> stream = Stream.map_every(1..10, 2, fn element -> element * 2 end)
       iex> Enum.to_list(stream)
       [2, 2, 6, 4, 10, 6, 14, 8, 18, 10]
 
-      iex> stream = Stream.map_every([1, 2, 3, 4, 5], 1, fn x -> x * 2 end)
+      iex> stream = Stream.map_every([1, 2, 3, 4, 5], 1, fn element -> element * 2 end)
       iex> Enum.to_list(stream)
       [2, 4, 6, 8, 10]
 
-      iex> stream = Stream.map_every(1..5, 0, fn x -> x * 2 end)
+      iex> stream = Stream.map_every(1..5, 0, fn element -> element * 2 end)
       iex> Enum.to_list(stream)
       [1, 2, 3, 4, 5]
 
@@ -602,7 +602,7 @@ defmodule Stream do
 
   ## Examples
 
-      iex> stream = Stream.reject([1, 2, 3], fn x -> rem(x, 2) == 0 end)
+      iex> stream = Stream.reject([1, 2, 3], fn element -> rem(element, 2) == 0 end)
       iex> Enum.to_list(stream)
       [1, 3]
 
@@ -985,7 +985,7 @@ defmodule Stream do
   """
   @spec uniq(Enumerable.t()) :: Enumerable.t()
   def uniq(enum) do
-    uniq_by(enum, fn x -> x end)
+    uniq_by(enum, fn element -> element end)
   end
 
   @doc false
@@ -1547,8 +1547,8 @@ defimpl Enumerable, for: Stream do
   def slice(_lazy), do: {:error, __MODULE__}
 
   def reduce(lazy, acc, fun) do
-    do_reduce(lazy, acc, fn x, [acc] ->
-      {reason, acc} = fun.(x, acc)
+    do_reduce(lazy, acc, fn element, [acc] ->
+      {reason, acc} = fun.(element, acc)
       {reason, [acc]}
     end)
   end

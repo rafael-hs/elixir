@@ -618,8 +618,8 @@ defmodule Exception do
     end
   end
 
-  defp format_arity(arity) when is_list(arity) do
-    inspected = for x <- arity, do: inspect(x)
+  defp format_arity(arities) when is_list(arities) do
+    inspected = for arity <- arities, do: inspect(arity)
     "(#{Enum.join(inspected, ", ")})"
   end
 

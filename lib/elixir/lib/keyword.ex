@@ -145,15 +145,15 @@ defmodule Keyword do
 
   ## Examples
 
-      iex> Keyword.new([:a, :b], fn x -> {x, x} end)
+      iex> Keyword.new([:a, :b], fn element -> {element, element} end)
       [a: :a, b: :b]
 
   """
   @spec new(Enum.t(), (term -> {key, value})) :: t
   def new(pairs, transform) do
-    fun = fn el, acc ->
-      {k, v} = transform.(el)
-      put_new(acc, k, v)
+    fun = fn element, acc ->
+      {key, value} = transform.(element)
+      put_new(acc, key, value)
     end
 
     :lists.foldl(fun, [], Enum.reverse(pairs))
